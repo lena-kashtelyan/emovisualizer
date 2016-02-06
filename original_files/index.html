@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Ka of Isis: Audio visualizer - Atomic</title>
+    <meta name="robots" content="robots.txt">
+    <meta name="description" content="Audio visualization based on early experiments by Grant Skinner for the JavaScript library 'EaselJS'. Music by Derek Matthews Band. The song is 'Mrs. McGrath'.">
+    <meta name="author" content="http://kaofisis.com/">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="format-detection" content="telephone=no">
+    <meta http-equiv="x-rim-auto-match" content="none">
+    <link rel="stylesheet" href="/css/koi.css">
+    <!--[if lt IE 10]><link rel="stylesheet" href="/css/ie.css"><![endif]-->
+    <style>
+        article div {
+            position: relative;
+            width: 260px;
+            height: 560px;
+            margin-top: 1.5em;
+            border: 1px solid #eef5df;
+            text-align: center;
+            background-color: #000;
+            overflow: hidden;
+        }
+        
+        canvas {
+            position: absolute;
+            left: -350px;
+        }
+        
+        @media only screen and (min-width:480px) and (max-width:577px) {
+            article div {
+                width: 400px;
+            }
+            canvas {
+                left: -280px;
+            }
+        }
+        
+        @media only screen and (min-width:578px) and (max-width:767px) {
+            article div {
+                width: 540px;
+            }
+            canvas {
+                left: -210px;
+            }
+        }
+        
+        @media only screen and (min-width:768px) and (max-width:997px) {
+            article div {
+                width: 680px;
+            }
+            canvas {
+                left: -140px;
+            }
+        }
+        
+        @media only screen and (min-width:998px) {
+            article div {
+                width: 960px;
+            }
+            canvas {
+                left: 0;
+            }
+        }
+    </style>
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+    <script>
+        window.jQuery || document.write('<script src="/js/jquery.min.js"><\/script>')
+    </script>
+    <script>
+        $(document).ready(function() {
+            $("#menu").click(function() {
+                $("#mainMenu").toggle("fast");
+            });
+            $("#subMenu1").click(function() {
+                $("#sm1").toggle("fast");
+            });
+            $("#subMenu2").click(function() {
+                $("#sm2").toggle("fast");
+            });
+            $("#subMenu3").click(function() {
+                $("#sm3").toggle("fast");
+            });
+            $("#subMenu4").click(function() {
+                $("#sm4").toggle("fast");
+            });
+        });
+    </script>
+    <script src="easel.js"></script>
+    <script src="VolumeData.js"></script>
+    <script>
+        // Ever so slightly modified, localized and minified by Bjorn Sortland
+        var maxCircles = 150,
+            canvas, stage, audio, image, barL, barR, bg, star, star2, bmp, glow, pos, playing, volumeData, scanLineImage, frontSphere, backSphere, light, circles, frontCircles, backCircles, scanLines, fpsFld, loadingFld;
+
+        function init() {
+            canvas = document.getElementById("vslzr");
+            stage = new Stage(canvas);
+            stage.autoClear = false;
+            audio = document.getElementById("dmb");
+            var w = canvas.width,
+                h = canvas.height;
+            scanLineImage = new Image();
+            scanLineImage.src = "scanlines.png";
+            loadMusic("dmb.jpg");
+            var screen = new Shape();
+            screen.graphics.beginFill("rgba(16,16,16,.25)").drawRect(0, 0, w + 1, h + 1);
+            star = new Shape();
+            star.graphics.beginFill(Graphics.getRGB(128, 40, 255, .03)).drawPolyStar(0, 0, h * .7, 48, .95);
+            star.graphics.beginFill(Graphics.getRGB(128, 40, 255, .18)).drawPolyStar(0, 0, h * .75, 6, .93);
+            star.graphics.beginFill(Graphics.getRGB(128, 40, 255, .05)).drawPolyStar(0, 0, h * .72, 24, .93);
+            star.compositeOperation = "lighter";
+            star2 = star.clone();
+            star2.alpha = .4;
+            bg = new Container();
+            bg.addChild(star, star2);
+            fpsFld = new Text("", "10px Arial", "#FFF");
+            fpsFld.alpha = .4;
+            fpsFld.x = 20;
+            fpsFld.y = 26;
+            var r = 40;
+            backSphere = new Shape();
+            backSphere.graphics.beginFill("#111").drawCircle(0, 0, r);
+            frontSphere = new Shape();
+            frontSphere.graphics.beginRadialGradientFill(["rgba(0,0,0,0)", "rgba(0,0,0,.6)"], [0, 1], -r * .2, -r * .2, 0, -r * .1, -r * .1, r);
+            frontSphere.graphics.drawCircle(0, 0, r);
+            glow = new Shape();
+            glow.graphics.beginRadialGradientFill(["rgba(230,180,255,.5)", "rgba(10,30,255,0)"], [0, 1], 0, 0, 0, 0, 0, w / 2).drawCircle(0, 0, w / 2);
+            glow.graphics.beginFill("rgba(128,0,128,.1)").drawCircle(0, 0, r * 3);
+            glow.graphics.beginFill("rgba(160,128,255,.1)").drawCircle(0, 0, r * 2);
+            glow.compositeOperation = "lighter";
+            light = new Shape();
+            light.graphics.beginFill("#95F").drawCircle(0, 0, r);
+            light.x = backSphere.x = glow.x = frontSphere.x = w / 2;
+            light.y = backSphere.y = glow.y = frontSphere.y = h / 2;
+            light.compositeOperation = "lighter";
+            scanLines = new Shape();
+            bg.x = canvas.width / 2;
+            bg.y = canvas.height / 2;
+            bg.scaleX = canvas.width / canvas.height;
+            frontCircles = new Container();
+            backCircles = new Container();
+            frontCircles.x = backCircles.x = w / 2;
+            frontCircles.y = backCircles.y = h / 2;
+            loadingFld = new Text("Loading audio...", "21px Arial", "#333");
+            loadingFld.textAlign = "center";
+            loadingFld.textBaseline = "middle";
+            loadingFld.x = w / 2;
+            loadingFld.y = h / 2;
+            stage.addChild(screen, fpsFld, loadingFld);
+            stage.update();
+            circles = [];
+            Ticker.setFPS(20);
+        }
+
+        function addCircle() {
+            var circle = new Shape();
+            circle.compositeOperation = "lighter";
+            circle.graphics.beginFill(Graphics.getRGB(20, 10, 90, Math.random() * .1 + .1)).drawCircle(0, 0, 50);
+            circle.graphics.beginFill(Graphics.getRGB(55, 30, 65, Math.random() * .2 + .2), 100, Math.random() * 5 + 90, 1).drawPolyStar(0, 0, 20, 6);
+            var a = Math.random() * Math.PI * 2,
+                d = Math.random() * 110 + 40;
+            circle._x = Math.cos(a) * d;
+            circle._y = Math.sin(a) * d;
+            circle.z = Math.random() * 50 + 100;
+            a = Math.random() * Math.PI * 2;
+            d = Math.random() * 15 + 10;
+            circle.velX = Math.cos(a) * d;
+            circle.velY = Math.sin(a) * d;
+            circle.velZ = Math.random() * 30 - 15;
+            circle.alpha = .5;
+            circles.push(circle);
+        }
+
+        function removeCircle() {
+            if (circles.length == 0) {
+                return;
+            }
+            var circle = circles.pop();
+            if (circle.parent) {
+                circle.parent.removeChild(circle);
+            }
+        }
+
+        function loadMusic(dataImageURL) {
+            image = new Image();
+            image.src = dataImageURL;
+            playing = false;
+            Ticker.addListener(window);
+        }
+
+        function tick() {
+            fpsFld.text = Math.round(Ticker.getMeasuredFPS()) + "fps";
+            if (!playing && image.complete && scanLineImage.complete && audio.readyState >= 4) {
+                playing = true;
+                volumeData = new VolumeData(image);
+                volumeData.gain = 1;
+                audio.play();
+                scanLines.graphics.beginBitmapFill(scanLineImage).drawRect(0, 0, canvas.width + 1, canvas.height + 1);
+                stage.removeChild(loadingFld);
+                stage.addChild(bg, glow, backCircles, backSphere, light, frontSphere, frontCircles, scanLines, fpsFld);
+                stage.clear();
+            } else {
+                audio.play();
+            }
+            if (!playing) {
+                return;
+            }
+            var t = audio.currentTime,
+                vol = volumeData.getVolume(t),
+                avgVol = volumeData.getAverageVolume(t - .1, t),
+                volDelta = volumeData.getVolume(t - .05);
+            volDelta.left = vol.left - volDelta.left;
+            volDelta.right = vol.right - volDelta.right;
+            star.rotation += avgVol.right * avgVol.left * 4 - .3;
+            star2.rotation = -star.rotation;
+            glow.alpha = vol.right;
+            light.alpha = avgVol.right * avgVol.left;
+            glow.scaleX = glow.scaleY = star.scaleX = star.scaleY = vol.right * vol.right * .8 + .5;
+            bg.alpha = vol.left * .5 - .1;
+            scanLines.alpha = 1 - vol.right * vol.left * .7;
+            frontSphere.alpha = Math.min(1, 3 - light.alpha * 2.6);
+            var s = avgVol.right * avgVol.right * .8 + .3;
+            frontCircles.scaleX = frontCircles.scaleY = backCircles.scaleX = backCircles.scaleY = Math.max(s, backCircles.scaleX + (s - backCircles.scaleX) * .1);
+            frontSphere.scaleX = frontSphere.scaleY = backSphere.scaleX = backSphere.scaleY = light.scaleX = light.scaleY = 1 + avgVol.right * avgVol.right * .6;
+            var l = circles.length,
+                c = .3;
+            while (l < maxCircles && volDelta.right + volDelta.left > c) {
+                addCircle();
+                c += .02;
+                l++;
+            }
+            var max = (avgVol.right + avgVol.left) / 2 * maxCircles,
+                focalDistance = 350;
+            for (var i = l - 1; i >= 0; i--) {
+                var circle = circles[i];
+                circle.velX += circle.x * -.005;
+                circle.velY += circle.y * -.005;
+                circle.velZ += circle.z * -.005;
+                circle._x += circle.velX;
+                circle._y += circle.velY;
+                circle.z += circle.velZ;
+                var p = focalDistance / (circle.z + 400);
+                circle.x = circle._x * p;
+                circle.y = circle._y * p;
+                circle.scaleX = circle.scaleY = (vol.left * vol.left * 1.1 + .4) * p * 2;
+                circle.alpha = vol.left + vol.right + .4;
+                if (circle.z > 0) {
+                    if (Math.sqrt(circle.x * circle.x + circle.y * circle.y) < 60 || (Math.random() < .15 && circle.z >= 100) && l > max) {
+                        if (circle.parent) {
+                            circle.parent.removeChild(circle);
+                        }
+                        circles.splice(i, 1);
+                    } else {
+                        backCircles.addChild(circle);
+                    }
+                } else {
+                    frontCircles.addChild(circle);
+                }
+            }
+            stage.update();
+        }
+    </script>
+</head>
+
+<body onload="init();">
+    <div id="ie">
+        <h1>Ka of Isis</h1>
+        <p>As you use Internet Explorer older than version 10, this site would look shite. This because Ka of Isis is built with modern tools and would require hacks and workarounds to function in your browser. I no longer have the patience nor the inclination to satisfy everybody. Ka of Isis is an experiment and a playground &#8211;&#160;and my sustenance does not depend on it. As a concequence &#8211;&#160;to embarrass nobody &#8211;&#160;I have decided to lock you out.</p>
+        <p>So, there.</p>
+    </div>
+    <div id="wrapper">
+        <aside>51</aside>
+        <header id="masthead">
+            <h1><a href="/">Ka of Isis</a></h1></header>
+        <nav id="main"><a id="menu" href="#"><b>&#8801;&#160;</b>Menu</a>
+            <div id="mainMenu"><a id="subMenu1" href="#">Rants and raves<b>&#8194;&#9662;</b></a>
+                <ul id="sm1">
+                    <li><a href="/log/151116/">First snow 2015</a></li>
+                    <li><a href="/log/150907/">Jan Kjærstad &#8211;&#160;Storyteller</a></li>
+                    <li><a href="/log/150504-2/">Rain on a window pane &#8211;&#160;JavaScript simulation</a></li>
+                    <li><a href="/log/150503/">CSS throbbers &#8211;&#160;Part 2</a></li>
+                    <li><a href="/log/150407/">CSS throbbers &#8211;&#160;Part 1</a></li>
+                    <li><a href="/log/150406/">ResEdit and the reconstruction of the Mac OS wristwatch cursor animation</a></li>
+                    <li><a href="/log/141108/">Kaja Norum</a></li>
+                    <li><a href="/log/141022/">Buell&#8230; RIP</a></li>
+                    <li><a href="/log/141016/">First snow 2014</a></li>
+                    <li><a href="/log/141010/">Kurt &#38; Kara ca 1984</a></li>
+                    <li><a href="/log/140627/">Canvas and the Close Pixelate script</a></li>
+                    <li><a href="/log/140614/">Is Java installed in Mac OS X?</a></li>
+                    <li><a href="/log/140517/">17 May 2014</a></li>
+                    <li><a href="/log/140329/starfield.php">Audio visualizer &#8211; Star field</a></li>
+                    <li><a href="/log/140329/">Audio visualizer &#8211; Atomic</a></li>
+                    <li><a href="/log/140323/">Flash <i>in memoriam</i></a></li>
+                    <li><a href="/log/140308/">Art and the blackboard</a></li>
+                    <li><a href="/log/140307/">Comment on a comment</a></li>
+                    <li><a href="/log/140219/">Faster than the speed of &#8230; sanity</a></li>
+                    <li><a href="/log/140216/">Ka of Isis version 2014</a></li>
+                    <li><a href="/log/131021/">First snow 2013</a></li>
+                    <li><a href="/log/121014/">First snow 2012</a></li>
+                    <li><a href="/log/120620/">My new love is a mysterium</a></li>
+                    <li><a href="/log/111206/">First snow 2011</a></li>
+                    <li><a href="/log/110217/">What does it mean to be a web developer in 2011?</a></li>
+                    <li><a href="/log/101021/">First snow 2010</a></li>
+                    <li><a href="/log/100827/">It&#8217;s OK not to wave back</a></li>
+                    <li><a href="/log/091105/">It&#8217;s all in the details</a></li>
+                    <li><a href="/log/091102/">First snow 2009</a></li>
+                    <li><a href="/log/081029/">First snow 2008</a></li>
+                    <li><a href="/log/081005/">Ten years after</a></li>
+                </ul><a id="subMenu2" href="#">Lorem ipsums<b>&#8194;&#9662;</b></a>
+                <ul id="sm2">
+                    <li><a href="/log/150504/">How to add and centre a custom iPad wallpaper</a></li>
+                    <li><a href="/log/150421-2/">How to make a screen dump on an iPad</a></li>
+                    <li><a href="/log/150421/">How to permanently delete pictures from an iPad</a></li>
+                    <li><a href="/log/150419/">The Users Library folder in Mac OS X</a></li>
+                    <li><a href="/log/150328/">Faking audio visualization with SVG</a></li>
+                    <li><a href="/log/141107/">CanoScan Lide 60 and Mac OS X 7 (Lion)</a></li>
+                    <li><a href="/log/141026/">How to design a close-button with CSS</a></li>
+                    <li><a href="/log/140625/">Film grain &#8211; Sort of</a></li>
+                    <li><a href="/log/140528/">Noisy canvas &#8211; Dynamic</a></li>
+                    <li><a href="/log/140502/">PHP &#8211; Random image</a></li>
+                    <li><a href="/log/140426/">PHP &#8211; How to get the width and height of an image</a></li>
+                    <li><a href="/log/140423/">PHP &#8211; Random quote</a></li>
+                    <li><a href="/log/140420/">PHP &#8211; How to find pathnames matching a pattern</a></li>
+                    <li><a href="/log/140405/">Web Audio API &#8211; 1st Approach</a></li>
+                    <li><a href="/log/140328-2/">How to create a composite layer in Photoshop</a></li>
+                    <li><a href="/log/140328/">Toast Titanium and Snow Leopard</a></li>
+                    <li><a href="/log/140326/">Toast Titanium plays OGG-files</a></li>
+                    <li><a href="/log/140315/">Hald Lock Cafe &#8211; Shanghai</a></li>
+                    <li><a href="/log/140312-2/">How to open an app from an unidentified developer</a></li>
+                    <li><a href="/log/140312/">Noisy background &#8211; Static</a></li>
+                    <li><a href="/log/140301/">Inaccurate selections in Photoshop</a></li>
+                    <li><a href="/log/140228/">US license plate</a></li>
+                    <li><a href="/log/110426/">ExpressionEngine and Control Panel sessions</a></li>
+                    <li><a href="/log/110405/">ExpressionEngine Word Limiter and Norwegian typography</a></li>
+                    <li><a href="/log/110214-2/">Get rid of the Joomla! generator meta tag</a></li>
+                    <li><a href="/log/110214-1/">Installation of Joomla! on localhost in Mac OS X</a></li>
+                    <li><a href="/log/110212/">How to avoid unzipping in Mac OS X</a></li>
+                    <li><a href="/log/100906/">Sound in FLV movies stops after a few seconds</a></li>
+                    <li><a href="/log/100902/">Overrule installation packages</a></li>
+                    <li><a href="/log/100828/">How to crop a movie with QuickTime Pro</a></li>
+                    <li><a href="/log/100723/">Smoothing text in Safari</a></li>
+                    <li><a href="/log/091026/">How to open ImageReady animations in Fireworks</a></li>
+                    <li><a href="/log/090102/">Serving ExpressionEngine</a></li>
+                    <li><a href="/log/081229/">phpMyAdmin for MySQL</a></li>
+                    <li><a href="/log/081218/">MySQL and the Macintosh</a></li>
+                    <li><a href="/log/081116/">The &#8220;Take on me&#8221; effect</a></li>
+                    <li><a href="/log/081030/">Transparent, horizontal navigation bar</a></li>
+                    <li><a href="/log/081025/">Windows screen dump with a Macintosh keyboard</a></li>
+                    <li><a href="/log/080910/">PHP for Apache</a></li>
+                    <li><a href="/log/080825/">Apache on the Macintosh</a></li>
+                    <li><a href="/log/060520/">Screen artefacts in QuarkXPress</a></li>
+                    <li><a href="/log/060312/">Missing borders in Flash movies</a></li>
+                    <li><a href="/log/060216/">Gradient mosaic</a></li>
+                </ul><a id="subMenu3" href="#">Work in progress<b>&#8194;&#9662;</b></a>
+                <ul id="sm3">
+                    <li><a href="/log/140320/">Those who came before</a></li>
+                    <li><a href="/log/100914/country-locator.html">Country locator</a></li>
+                    <li><a href="/log/080919/">The external link symbol</a></li>
+                </ul><a id="subMenu4" href="#">Notes to self<b>&#8194;&#9662;</b></a>
+                <ul id="sm4">
+                    <li><a href="/log/150504-3/">Ordnance Survey map of Great Britain</a></li>
+                    <li><a href="/log/150618/">The concerts</a></li>
+                    <li><a href="/log/150501/">The CSS rule &#8211;&#160;Note to self</a></li>
+                    <li><a href="/log/140308-2/">Keyboard shortcuts &#8211; Note to self</a></li>
+                    <li><a href="/log/150511/">xStand for iPad &#8211;&#160;The missing user manual</a></li>
+                    <li><a href="/log/150508/">Testing PhotoSwipe &#8211;&#160;Note to self</a></li>
+                    <li><a href="/log/140628/">CSS blur animation &#8211; Note to self</a></li>
+                    <li><a href="/log/140319/">On animated cursors &#8211; Note to self</a></li>
+                </ul>
+            </div>
+        </nav>
+        <nav id="admin">
+            <ul>
+                <li><a href="#">Login</a></li>
+                <li><a href="/form/">Contact</a><span></span></li>
+            </ul>
+        </nav>
+        <article>
+            <h2>Audio visualizer &#8211;&#160;Atomic</h2>
+            <p>29 March 2014<span> &#8211; Art.&#160;51</span></p>
+            <div><canvas id="vslzr" width="960px" height="560px"><p class="nb">Your browser is too old for this&#8230;</p></canvas></div><audio id="dmb"><source src="/audio/dmb.mp3" type="audio/mpeg"><source src="/audio/dmb.ogg" type="audio/ogg"></audio>
+            <p class="drpcp">An audio visualization experiment based on an early version of Grant Skinner&#8217;s <a href="http://www.createjs.com/#!/EaselJS">EaselJS</a> JavaScript library. The effect created was originally, and appropriately, called <i>Atomic</i>. If you ever tire of it (which is not possible), try and resist <a href="starfield.php">the <i>Star field</i> variation</a>. The tune, by the way, is <i>Mrs. McGrath</i>, performed by the Derek Matthews Band.</p>
+            <p><span class="nb">Bummer: </span>This works neither on an iPad with iOS 7.0.4 nor in Android 4.1.2 on a Samsung tablet. Desktop has been tested OK with Safari and Chrome in Mac OS X and with Chrome in Windows XP. That&#8217;s life for you.</p>
+        </article>
+        <footer class="cntr">Ka of Isis &#169; Bjørn Sortland</footer><noscript class="cntr">This site is shite without JavaScript</noscript></div>
+</body>
+
+</html>
